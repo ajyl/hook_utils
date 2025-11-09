@@ -8,8 +8,8 @@ from contextlib import contextmanager
 import torch
 from torch import Tensor, nn
 from transformers import LlamaForCausalLM, Qwen3ForCausalLM
-from .HookedLlama import convert_to_hooked_model_llama
-from .HookedQwen import convert_to_hooked_model_qwen
+from hook_utils.HookedLlama import convert_to_hooked_model_llama
+from hook_utils.HookedQwen import convert_to_hooked_model_qwen
 
 
 def untuple_tensor(x: torch.Tensor | tuple[torch.Tensor, ...]) -> torch.Tensor:

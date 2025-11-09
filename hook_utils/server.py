@@ -98,7 +98,11 @@ def query_string(req: RunRequest):
                 attention_mask=attention_mask,
             )
 
-    cache = {k: v[0][:, req.seq_idx].cpu() for k, v in cache.items()}
+    if req.seq_idx is not None:
+        cache = {k: v[0][:, req.seq_idx].cpu() for k, v in cache.items()}
+    else:
+        cache = {k: v[0].cpu() for k, v in cache.items()}
+
     if req.save_logits:
         cache["logits"] = out.logits
     # write activations
