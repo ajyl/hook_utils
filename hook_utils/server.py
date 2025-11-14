@@ -17,7 +17,8 @@ from record_utils import record_activations, convert_to_hooked_model
 MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-TEMP_DIR = "/tmp/ajyl"
+#TEMP_DIR = "/tmp/ajyl"
+TEMP_DIR = "/n/netscratch/wattenberg_lab/Lab/ajyl/tmp_acts"
 os.makedirs(TEMP_DIR, exist_ok=True)
 
 # ---------- Model Load (once) ----------

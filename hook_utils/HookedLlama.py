@@ -38,13 +38,17 @@ def eager_attention_forward(
     key_states = repeat_kv(key, module.num_key_value_groups)
     value_states = repeat_kv(value, module.num_key_value_groups)
 
-    attn_weights = torch.matmul(query, key_states.transpose(2, 3)) * scaling
+    attn_weights = torch.matmul(query, key_states.transpose(2, 3))
+    attn_weights = module.hook_qk_logits(attn_weights)
+    attn_weights = attn_weights * scaling
+    #attn_weights = torch.matmul(query, key_states.transpose(2, 3)) * scaling
     if attention_mask is not None:
         causal_mask = attention_mask[:, :, :, : key_states.shape[-2]].to(
             attn_weights.device
         )
         attn_weights = attn_weights + causal_mask
 
+    #attn_weights = module.hook_qk_logits(attn_weights)
     attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
         query.dtype
     )
@@ -188,8 +192,9 @@ def hooked_forward_attention(
     value_states = self.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
     cos, sin = position_embeddings
-    #cos = cos.to(query_states.device)
-    #sin = sin.to(query_states.device)
+    query_states = self.hook_query_states_pre_rope(query_states)
+    key_states = self.hook_key_states_pre_rope(key_states)
+
     query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
     if past_key_value is not None:
@@ -199,6 +204,8 @@ def hooked_forward_attention(
             key_states, value_states, self.layer_idx, cache_kwargs
         )
 
+    key_states = self.hook_key_states(key_states)
+    query_states = self.hook_query_states(query_states)
     attention_interface: Callable = eager_attention_forward
     if self.config._attn_implementation != "eager":
         attention_interface = sdpa_attention_forward
@@ -214,10 +221,10 @@ def hooked_forward_attention(
         **kwargs,
     )
 
+    attn_weights = self.hook_attn_pattern(attn_weights)
     """
     # attn_weights: [batch, heads, seq (query), seq (key)]
     # attn_output: [batch, seq, heads, head_dim]
-    attn_weights = self.hook_attn_pattern(attn_weights)
     # attn_output_reshaped: [batch, seq, d_model (heads * head_dim)]
     #attn_output_reshaped = attn_output.reshape(*input_shape, -1).contiguous()
 
@@ -314,7 +321,14 @@ def convert_to_hooked_model_llama(model):
         layer.hook_resid_mid = HookPoint()
         layer.hook_resid_post = HookPoint()
 
+        layer.self_attn.hook_key_states_pre_rope = HookPoint()
+        layer.self_attn.hook_query_states_pre_rope = HookPoint()
+
+        layer.self_attn.hook_key_states = HookPoint()
+        layer.self_attn.hook_query_states = HookPoint()
+
         layer.self_attn.hook_attn_pattern = HookPoint()
+        layer.self_attn.hook_qk_logits = HookPoint()
         layer.self_attn.hook_value_states_post_attn = HookPoint()
         layer.self_attn.hook_o_proj = HookPoint()
         layer.self_attn.hook_attn_out_per_head = HookPoint()

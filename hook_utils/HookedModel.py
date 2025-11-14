@@ -324,6 +324,8 @@ def convert_to_hooked_model(model):
         layer.self_attn.hook_value_states_post_attn = HookPoint()
         layer.self_attn.hook_o_proj = HookPoint()
         layer.self_attn.hook_attn_out_per_head = HookPoint()
+        layer.self_attn.hook_key_states = HookPoint()
+        layer.self_attn.hook_query_states = HookPoint()
 
         layer.mlp.hook_mlp_mid = HookPoint()
 
