@@ -1,4 +1,5 @@
 import torch
+from hook_utils.record_utils import record_activations
 
 
 @torch.no_grad()
@@ -63,22 +64,27 @@ def hooked_generate_topk(
     attention_mask = inputs.attention_mask
     acts = {module_name: [] for module_name in record_module_names}
     finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
-    mask = []
+    valid_timestep_mask = []
     while timestep < max_new_tokens:
         if finished.all():
             break
 
+        alive = ~finished
+        valid_timestep_mask.append(alive.clone())
+
         position_ids = attention_mask.long().cumsum(-1) - 1
-        position_ids.masked_fill_(attention_mask == 0, 1)
+        position_ids.masked_fill_(attention_mask == 0, 0)
         with record_activations(model, record_module_names) as cache:
             logits = model(
                 input_ids,
-                attention_mask=inputs.attention_mask,
+                attention_mask=attention_mask,
                 position_ids=position_ids,
             ).logits
 
         for module_name in record_module_names:
-            acts[module_name].append(cache[module_name][0][:, -1])
+            _acts = cache[module_name][0][:, -1].clone()
+            _acts[~alive] = torch.nan
+            acts[module_name].append(_acts)
 
         topk_logits, topk_indices = torch.topk(logits[:, -1], k=k, dim=-1)
         topk_probs = torch.softmax(topk_logits, dim=-1)
@@ -86,9 +92,7 @@ def hooked_generate_topk(
         next_token = torch.gather(topk_indices, 1, next_token)
 
         reached_eos = next_token.squeeze(1) == eos_token_id
-        new_finished = (~finished) & (
-            reached_eos
-        )
+        new_finished = (~finished) & (reached_eos)
         finished |= new_finished
         next_token[finished] = eos_token_id
 
@@ -107,4 +111,5 @@ def hooked_generate_topk(
         module_name: torch.stack(acts[module_name], dim=1)
         for module_name in record_module_names
     }
-    return input_ids, acts
+    valid_timestep_mask = torch.stack(valid_timestep_mask, dim=1)
+    return input_ids, acts, valid_timestep_mask
